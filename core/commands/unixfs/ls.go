@@ -8,11 +8,10 @@ import (
 
 	cmdenv "github.com/ipfs/go-ipfs/core/commands/cmdenv"
 
-	cmds "gx/ipfs/QmPHTMcFRnDfyF8mk7RXHoZXNQ3uvBHDmuLgvkG7RLwN6t/go-ipfs-cmds"
-	merkledag "gx/ipfs/QmUtsx89yiCY6F8mbpP6ecXckiSzCBH7EvkKZuZEHBcr1m/go-merkledag"
-	iface "gx/ipfs/QmVSbopkxvLSRFuUn1SeHoEcArhCLn2okUbVpLvhQ1pm1X/interface-go-ipfs-core"
-	cmdkit "gx/ipfs/Qmde5VP1qUkyQXKCfmEUA7bP64V2HAptbJ7phuPp7jXWwg/go-ipfs-cmdkit"
-	unixfs "gx/ipfs/QmetDvVkKzbr8PYuBV6S48q5DU9EUQktYjo9KdkA3zbQgK/go-unixfs"
+	cmds "github.com/ipfs/go-ipfs-cmds"
+	merkledag "github.com/ipfs/go-merkledag"
+	unixfs "github.com/ipfs/go-unixfs"
+	path "github.com/ipfs/interface-go-ipfs-core/path"
 )
 
 type LsLink struct {
@@ -34,7 +33,7 @@ type LsOutput struct {
 }
 
 var LsCmd = &cmds.Command{
-	Helptext: cmdkit.HelpText{
+	Helptext: cmds.HelpText{
 		Tagline: "List directory contents for Unix filesystem objects.",
 		ShortDescription: `
 Displays the contents of an IPFS or IPNS object(s) at the given path.
@@ -68,8 +67,8 @@ possible, please use 'ipfs ls' instead.
 `,
 	},
 
-	Arguments: []cmdkit.Argument{
-		cmdkit.StringArg("ipfs-path", true, true, "The path to the IPFS object(s) to list links from.").EnableStdin(),
+	Arguments: []cmds.Argument{
+		cmds.StringArg("ipfs-path", true, true, "The path to the IPFS object(s) to list links from.").EnableStdin(),
 	},
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
 		nd, err := cmdenv.GetNode(env)
@@ -96,12 +95,7 @@ possible, please use 'ipfs ls' instead.
 		for _, p := range paths {
 			ctx := req.Context
 
-			fpath, err := iface.ParsePath(p)
-			if err != nil {
-				return err
-			}
-
-			merkleNode, err := api.ResolveNode(ctx, fpath)
+			merkleNode, err := api.ResolveNode(ctx, path.New(p))
 			if err != nil {
 				return err
 			}

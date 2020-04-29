@@ -11,22 +11,22 @@ import (
 	"strings"
 	"sync"
 
-	filestore "github.com/ipfs/go-ipfs/filestore"
+	filestore "github.com/ipfs/go-filestore"
 	keystore "github.com/ipfs/go-ipfs/keystore"
 	repo "github.com/ipfs/go-ipfs/repo"
 	"github.com/ipfs/go-ipfs/repo/common"
 	mfsr "github.com/ipfs/go-ipfs/repo/fsrepo/migrations"
 	dir "github.com/ipfs/go-ipfs/thirdparty/dir"
 
-	ma "gx/ipfs/QmNTCey11oxhb1AxDnQBRHtdhap6Ctud872NjAYPYYXPuc/go-multiaddr"
-	util "gx/ipfs/QmNohiVssaPw3KVLZik59DBVGTSm2dGvYT9eoXt5DQ36Yz/go-ipfs-util"
-	config "gx/ipfs/QmTbcMKv6GU3fxhnNcbzYChdox9Fdd7VpucM3PQ7UWjX3D/go-ipfs-config"
-	serialize "gx/ipfs/QmTbcMKv6GU3fxhnNcbzYChdox9Fdd7VpucM3PQ7UWjX3D/go-ipfs-config/serialize"
-	lockfile "gx/ipfs/QmcWjZkQxyPMkgZRpda4hqWwaD6E1yqCvcxZfxbt98CEAK/go-fs-lock"
-	logging "gx/ipfs/QmcuXC5cxs79ro2cUuHs4HQ2bkDLJUYokwL8aivcX6HW3C/go-log"
-	measure "gx/ipfs/QmdCQgMgoMjur6D15ZB3z1LodiSP3L6EBHMyVx4ekqzRWA/go-ds-measure"
-	homedir "gx/ipfs/QmdcULN1WCzgoQmcCaUAmEhwcxHYsDrbZ2LvRJKCL8dMrK/go-homedir"
-	ds "gx/ipfs/Qmf4xQhNomPNhrtZc67qSnfJSjxjXs9LWvknJtSXwimPrM/go-datastore"
+	ds "github.com/ipfs/go-datastore"
+	measure "github.com/ipfs/go-ds-measure"
+	lockfile "github.com/ipfs/go-fs-lock"
+	config "github.com/ipfs/go-ipfs-config"
+	serialize "github.com/ipfs/go-ipfs-config/serialize"
+	util "github.com/ipfs/go-ipfs-util"
+	logging "github.com/ipfs/go-log"
+	homedir "github.com/mitchellh/go-homedir"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 // LockFile is the filename of the repo lock, relative to config dir
@@ -36,7 +36,7 @@ const LockFile = "repo.lock"
 var log = logging.Logger("fsrepo")
 
 // version number that we are currently expecting to see
-var RepoVersion = 7
+var RepoVersion = 9
 
 var migrationInstructions = `See https://github.com/ipfs/fs-repo-migrations/blob/master/run.md
 Sorry for the inconvenience. In the future, these will run automatically.`
@@ -403,7 +403,7 @@ func (r *FSRepo) openDatastore() error {
 		return fmt.Errorf("required Datastore.Spec entry missing from config file")
 	}
 	if r.config.Datastore.NoSync {
-		log.Warning("NoSync is now deprecated in favor of datastore specific settings. If you want to disable fsync on flatfs set 'sync' to false. See https://github.com/ipfs/go-ipfs/blob/master/docs/datastores.md#flatfs.")
+		log.Warn("NoSync is now deprecated in favor of datastore specific settings. If you want to disable fsync on flatfs set 'sync' to false. See https://github.com/ipfs/go-ipfs/blob/master/docs/datastores.md#flatfs.")
 	}
 
 	dsc, err := AnyDatastoreConfig(r.config.Datastore.Spec)
@@ -457,7 +457,7 @@ func (r *FSRepo) Close() error {
 
 	err := os.Remove(filepath.Join(r.path, apiFile))
 	if err != nil && !os.IsNotExist(err) {
-		log.Warning("error removing api file: ", err)
+		log.Warn("error removing api file: ", err)
 	}
 
 	if err := r.ds.Close(); err != nil {

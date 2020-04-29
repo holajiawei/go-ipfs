@@ -6,8 +6,8 @@ import (
 
 	core "github.com/ipfs/go-ipfs/core"
 
-	prometheus "gx/ipfs/QmTQuFQWHAWy4wMH6ZyPfGiawA5u9T8rs79FENoV8yXaoS/client_golang/prometheus"
-	promhttp "gx/ipfs/QmTQuFQWHAWy4wMH6ZyPfGiawA5u9T8rs79FENoV8yXaoS/client_golang/prometheus/promhttp"
+	prometheus "github.com/prometheus/client_golang/prometheus"
+	promhttp "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // This adds the scraping endpoint which Prometheus uses to fetch metrics.
@@ -24,6 +24,7 @@ func MetricsCollectionOption(handlerName string) ServeOption {
 		// Adapted from github.com/prometheus/client_golang/prometheus/http.go
 		// Work around https://github.com/prometheus/client_golang/pull/311
 		opts := prometheus.SummaryOpts{
+			Namespace:   "ipfs",
 			Subsystem:   "http",
 			ConstLabels: prometheus.Labels{"handler": handlerName},
 			Objectives:  map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
@@ -97,6 +98,13 @@ var (
 	peersTotalMetric = prometheus.NewDesc(
 		prometheus.BuildFQName("ipfs", "p2p", "peers_total"),
 		"Number of connected peers", []string{"transport"}, nil)
+
+	unixfsGetMetric = prometheus.NewSummaryVec(prometheus.SummaryOpts{
+		Namespace: "ipfs",
+		Subsystem: "http",
+		Name:      "unixfs_get_latency_seconds",
+		Help:      "The time till the first block is received when 'getting' a file from the gateway.",
+	}, []string{"namespace"})
 )
 
 type IpfsNodeCollector struct {

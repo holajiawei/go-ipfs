@@ -3,10 +3,9 @@ package coreapi
 import (
 	"context"
 
-	"github.com/ipfs/go-ipfs/pin"
-
-	cid "gx/ipfs/QmR8BauakNcBa3RbE4nbQu76PDiJgoQgz8AJdhJuiU4TAw/go-cid"
-	ipld "gx/ipfs/QmRL22E4paat7ky7vx9MLpR97JHHbFPrg3ytFQw6qp1y1s/go-ipld-format"
+	cid "github.com/ipfs/go-cid"
+	"github.com/ipfs/go-ipfs-pinner"
+	ipld "github.com/ipfs/go-ipld-format"
 )
 
 type dagAPI struct {
@@ -26,7 +25,7 @@ func (adder *pinningAdder) Add(ctx context.Context, nd ipld.Node) error {
 
 	adder.pinning.PinWithMode(nd.Cid(), pin.Recursive)
 
-	return adder.pinning.Flush()
+	return adder.pinning.Flush(ctx)
 }
 
 func (adder *pinningAdder) AddMany(ctx context.Context, nds []ipld.Node) error {
@@ -45,7 +44,7 @@ func (adder *pinningAdder) AddMany(ctx context.Context, nds []ipld.Node) error {
 		}
 	}
 
-	return adder.pinning.Flush()
+	return adder.pinning.Flush(ctx)
 }
 
 func (api *dagAPI) Pinning() ipld.NodeAdder {

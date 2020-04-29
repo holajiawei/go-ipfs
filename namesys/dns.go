@@ -6,10 +6,13 @@ import (
 	"net"
 	"strings"
 
-	path "gx/ipfs/QmQ3YSqfxunT5QBg6KBVskKyRE26q6hjSMyhpxchpm7jEN/go-path"
-	opts "gx/ipfs/QmVSbopkxvLSRFuUn1SeHoEcArhCLn2okUbVpLvhQ1pm1X/interface-go-ipfs-core/options/namesys"
-	isd "gx/ipfs/QmZmmuAXgX73UQmX1jRKjTGmjzq24Jinqkq8vzkBtno4uX/go-is-domain"
+	path "github.com/ipfs/go-path"
+	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
+	isd "github.com/jbenet/go-is-domain"
 )
+
+const ethTLD = "eth"
+const linkTLD = "link"
 
 type LookupTXTFunc func(name string) (txt []string, err error)
 
@@ -60,6 +63,12 @@ func (r *DNSResolver) resolveOnceAsync(ctx context.Context, name string, options
 		fqdn = domain
 	} else {
 		fqdn = domain + "."
+	}
+
+	if strings.HasSuffix(fqdn, "."+ethTLD+".") {
+		// This is an ENS name.  As we're resolving via an arbitrary DNS server
+		// that may not know about .eth we need to add our link domain suffix.
+		fqdn += linkTLD + "."
 	}
 
 	rootChan := make(chan lookupRes, 1)

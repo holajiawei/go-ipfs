@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
 	assets "github.com/ipfs/go-ipfs/assets"
@@ -16,10 +16,9 @@ import (
 	namesys "github.com/ipfs/go-ipfs/namesys"
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
 
-	"gx/ipfs/QmPHTMcFRnDfyF8mk7RXHoZXNQ3uvBHDmuLgvkG7RLwN6t/go-ipfs-cmds"
-	"gx/ipfs/QmQmhotPUzVrMEWNK3x1R5jQ5ZHWyL7tVUrmRPjrBrvyCb/go-ipfs-files"
-	"gx/ipfs/QmTbcMKv6GU3fxhnNcbzYChdox9Fdd7VpucM3PQ7UWjX3D/go-ipfs-config"
-	"gx/ipfs/Qmde5VP1qUkyQXKCfmEUA7bP64V2HAptbJ7phuPp7jXWwg/go-ipfs-cmdkit"
+	cmds "github.com/ipfs/go-ipfs-cmds"
+	config "github.com/ipfs/go-ipfs-config"
+	files "github.com/ipfs/go-ipfs-files"
 )
 
 const (
@@ -29,8 +28,12 @@ const (
 	profileOptionName      = "profile"
 )
 
+var errRepoExists = errors.New(`ipfs configuration file already exists!
+Reinitializing would overwrite your keys.
+`)
+
 var initCmd = &cmds.Command{
-	Helptext: cmdkit.HelpText{
+	Helptext: cmds.HelpText{
 		Tagline: "Initializes ipfs config file.",
 		ShortDescription: `
 Initializes ipfs configuration files and generates a new keypair.
@@ -47,18 +50,18 @@ environment variable:
     export IPFS_PATH=/path/to/ipfsrepo
 `,
 	},
-	Arguments: []cmdkit.Argument{
-		cmdkit.FileArg("default-config", false, false, "Initialize with the given configuration.").EnableStdin(),
+	Arguments: []cmds.Argument{
+		cmds.FileArg("default-config", false, false, "Initialize with the given configuration.").EnableStdin(),
 	},
-	Options: []cmdkit.Option{
-		cmdkit.IntOption(bitsOptionName, "b", "Number of bits to use in the generated RSA private key.").WithDefault(nBitsForKeypairDefault),
-		cmdkit.BoolOption(emptyRepoOptionName, "e", "Don't add and pin help files to the local storage."),
-		cmdkit.StringOption(profileOptionName, "p", "Apply profile settings to config. Multiple profiles can be separated by ','"),
+	Options: []cmds.Option{
+		cmds.IntOption(bitsOptionName, "b", "Number of bits to use in the generated RSA private key.").WithDefault(nBitsForKeypairDefault),
+		cmds.BoolOption(emptyRepoOptionName, "e", "Don't add and pin help files to the local storage."),
+		cmds.StringOption(profileOptionName, "p", "Apply profile settings to config. Multiple profiles can be separated by ','"),
 
 		// TODO need to decide whether to expose the override as a file or a
 		// directory. That is: should we allow the user to also specify the
 		// name of the file?
-		// TODO cmdkit.StringOption("event-logs", "l", "Location for machine-readable event logs."),
+		// TODO cmds.StringOption("event-logs", "l", "Location for machine-readable event logs."),
 	},
 	PreRun: func(req *cmds.Request, env cmds.Environment) error {
 		cctx := env.(*oldcmds.Context)
@@ -78,10 +81,6 @@ environment variable:
 	},
 	Run: func(req *cmds.Request, res cmds.ResponseEmitter, env cmds.Environment) error {
 		cctx := env.(*oldcmds.Context)
-		if cctx.Online {
-			return cmdkit.Error{Message: "init must be run offline only"}
-		}
-
 		empty, _ := req.Options[emptyRepoOptionName].(bool)
 		nBitsForKeypair, _ := req.Options[bitsOptionName].(int)
 
@@ -107,31 +106,30 @@ environment variable:
 			}
 		}
 
-		profile, _ := req.Options[profileOptionName].(string)
-
-		var profiles []string
-		if profile != "" {
-			profiles = strings.Split(profile, ",")
-		}
-
+		profiles, _ := req.Options[profileOptionName].(string)
 		return doInit(os.Stdout, cctx.ConfigRoot, empty, nBitsForKeypair, profiles, conf)
 	},
 }
 
-var errRepoExists = errors.New(`ipfs configuration file already exists!
-Reinitializing would overwrite your keys.
-`)
-
-func initWithDefaults(out io.Writer, repoRoot string, profile string) error {
-	var profiles []string
-	if profile != "" {
-		profiles = strings.Split(profile, ",")
+func applyProfiles(conf *config.Config, profiles string) error {
+	if profiles == "" {
+		return nil
 	}
 
-	return doInit(out, repoRoot, false, nBitsForKeypairDefault, profiles, nil)
+	for _, profile := range strings.Split(profiles, ",") {
+		transformer, ok := config.Profiles[profile]
+		if !ok {
+			return fmt.Errorf("invalid configuration profile: %s", profile)
+		}
+
+		if err := transformer.Transform(conf); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func doInit(out io.Writer, repoRoot string, empty bool, nBitsForKeypair int, confProfiles []string, conf *config.Config) error {
+func doInit(out io.Writer, repoRoot string, empty bool, nBitsForKeypair int, confProfiles string, conf *config.Config) error {
 	if _, err := fmt.Fprintf(out, "initializing IPFS node at %s\n", repoRoot); err != nil {
 		return err
 	}
@@ -152,15 +150,8 @@ func doInit(out io.Writer, repoRoot string, empty bool, nBitsForKeypair int, con
 		}
 	}
 
-	for _, profile := range confProfiles {
-		transformer, ok := config.Profiles[profile]
-		if !ok {
-			return fmt.Errorf("invalid configuration profile: %s", profile)
-		}
-
-		if err := transformer.Transform(conf); err != nil {
-			return err
-		}
+	if err := applyProfiles(conf, confProfiles); err != nil {
+		return err
 	}
 
 	if err := fsrepo.Init(repoRoot, conf); err != nil {
@@ -180,7 +171,7 @@ func checkWritable(dir string) error {
 	_, err := os.Stat(dir)
 	if err == nil {
 		// dir exists, make sure we can write to it
-		testfile := path.Join(dir, "test")
+		testfile := filepath.Join(dir, "test")
 		fi, err := os.Create(testfile)
 		if err != nil {
 			if os.IsPermission(err) {

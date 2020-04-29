@@ -5,22 +5,21 @@ import (
 	"testing"
 	"time"
 
-	ci "gx/ipfs/QmNiJiXwWE3kRhZrC5ej3kSjWHm337pYfhjLGSCDNKJP2s/go-libp2p-crypto"
-	u "gx/ipfs/QmNohiVssaPw3KVLZik59DBVGTSm2dGvYT9eoXt5DQ36Yz/go-ipfs-util"
-	peer "gx/ipfs/QmPJxxDsX2UbchSHobbYuvz7qnyJTFKvaKMzE2rZWJ4x5B/go-libp2p-peer"
-	path "gx/ipfs/QmQ3YSqfxunT5QBg6KBVskKyRE26q6hjSMyhpxchpm7jEN/go-path"
-	pstore "gx/ipfs/QmQFFp4ntkd4C14sP3FaH9WJyBuetuGUVo6dShNHvnoEvC/go-libp2p-peerstore"
-	pstoremem "gx/ipfs/QmQFFp4ntkd4C14sP3FaH9WJyBuetuGUVo6dShNHvnoEvC/go-libp2p-peerstore/pstoremem"
-	mockrouting "gx/ipfs/QmRJvdmKJoDcQEhhTt5NYXJPQFnJYPo1kfapxtjZLfDDqH/go-ipfs-routing/mock"
-	offline "gx/ipfs/QmRJvdmKJoDcQEhhTt5NYXJPQFnJYPo1kfapxtjZLfDDqH/go-ipfs-routing/offline"
-	routing "gx/ipfs/QmRjT8Bkut84fHf9nxMQBxGsqLAkqzMdFaemDK7e61dBNZ/go-libp2p-routing"
-	ropts "gx/ipfs/QmRjT8Bkut84fHf9nxMQBxGsqLAkqzMdFaemDK7e61dBNZ/go-libp2p-routing/options"
-	opts "gx/ipfs/QmVSbopkxvLSRFuUn1SeHoEcArhCLn2okUbVpLvhQ1pm1X/interface-go-ipfs-core/options/namesys"
-	testutil "gx/ipfs/QmVnJMgafh5MBYiyqbvDtoCL8pcQvbEGD2k9o9GFpBWPzY/go-testutil"
-	ipns "gx/ipfs/QmVpC4PPSaoqZzWYEnQURnsQagimcWEzNKZouZyd7sNJdZ/go-ipns"
-	record "gx/ipfs/QmexPd3srWxHC76gW2p5j5tQvwpPuCoW7b9vFhJ8BRPyh9/go-libp2p-record"
-	ds "gx/ipfs/Qmf4xQhNomPNhrtZc67qSnfJSjxjXs9LWvknJtSXwimPrM/go-datastore"
-	dssync "gx/ipfs/Qmf4xQhNomPNhrtZc67qSnfJSjxjXs9LWvknJtSXwimPrM/go-datastore/sync"
+	ds "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
+	mockrouting "github.com/ipfs/go-ipfs-routing/mock"
+	offline "github.com/ipfs/go-ipfs-routing/offline"
+	ipns "github.com/ipfs/go-ipns"
+	path "github.com/ipfs/go-path"
+	opts "github.com/ipfs/interface-go-ipfs-core/options/namesys"
+	ci "github.com/libp2p/go-libp2p-core/crypto"
+	peer "github.com/libp2p/go-libp2p-core/peer"
+	pstore "github.com/libp2p/go-libp2p-core/peerstore"
+	routing "github.com/libp2p/go-libp2p-core/routing"
+	"github.com/libp2p/go-libp2p-core/test"
+	pstoremem "github.com/libp2p/go-libp2p-peerstore/pstoremem"
+	record "github.com/libp2p/go-libp2p-record"
+	testutil "github.com/libp2p/go-libp2p-testing/net"
 )
 
 func TestResolverValidation(t *testing.T) {
@@ -138,19 +137,15 @@ func TestResolverValidation(t *testing.T) {
 }
 
 func genKeys(t *testing.T) (ci.PrivKey, peer.ID, string, string) {
-	sr := u.NewTimeSeededRand()
-	priv, _, err := ci.GenerateKeyPairWithReader(ci.RSA, 1024, sr)
+	sk, pk, err := test.RandTestKeyPair(ci.RSA, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Create entry with expiry in one hour
-	pid, err := peer.IDFromPrivateKey(priv)
+	id, err := peer.IDFromPublicKey(pk)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	return priv, pid, PkKeyForID(pid), ipns.RecordKey(pid)
+	return sk, id, PkKeyForID(id), ipns.RecordKey(id)
 }
 
 type mockValueStore struct {
@@ -168,11 +163,11 @@ func newMockValueStore(id testutil.Identity, dstore ds.Datastore, kbook pstore.K
 	}
 }
 
-func (m *mockValueStore) GetValue(ctx context.Context, k string, opts ...ropts.Option) ([]byte, error) {
+func (m *mockValueStore) GetValue(ctx context.Context, k string, opts ...routing.Option) ([]byte, error) {
 	return m.r.GetValue(ctx, k, opts...)
 }
 
-func (m *mockValueStore) SearchValue(ctx context.Context, k string, opts ...ropts.Option) (<-chan []byte, error) {
+func (m *mockValueStore) SearchValue(ctx context.Context, k string, opts ...routing.Option) (<-chan []byte, error) {
 	return m.r.SearchValue(ctx, k, opts...)
 }
 
@@ -196,6 +191,6 @@ func (m *mockValueStore) GetPublicKey(ctx context.Context, p peer.ID) (ci.PubKey
 	return pk, m.kbook.AddPubKey(p, pk)
 }
 
-func (m *mockValueStore) PutValue(ctx context.Context, k string, d []byte, opts ...ropts.Option) error {
+func (m *mockValueStore) PutValue(ctx context.Context, k string, d []byte, opts ...routing.Option) error {
 	return m.r.PutValue(ctx, k, d, opts...)
 }

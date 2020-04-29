@@ -18,28 +18,30 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ipfs/go-ipfs/core"
-	"github.com/ipfs/go-ipfs/namesys"
-	"github.com/ipfs/go-ipfs/pin"
-	"github.com/ipfs/go-ipfs/repo"
+	bserv "github.com/ipfs/go-blockservice"
+	"github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipfs/go-ipfs-exchange-interface"
+	offlinexch "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-ipfs-pinner"
+	"github.com/ipfs/go-ipfs-provider"
+	offlineroute "github.com/ipfs/go-ipfs-routing/offline"
+	ipld "github.com/ipfs/go-ipld-format"
+	logging "github.com/ipfs/go-log"
+	dag "github.com/ipfs/go-merkledag"
+	coreiface "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/ipfs/interface-go-ipfs-core/options"
+	ci "github.com/libp2p/go-libp2p-core/crypto"
+	p2phost "github.com/libp2p/go-libp2p-core/host"
+	peer "github.com/libp2p/go-libp2p-core/peer"
+	pstore "github.com/libp2p/go-libp2p-core/peerstore"
+	routing "github.com/libp2p/go-libp2p-core/routing"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	record "github.com/libp2p/go-libp2p-record"
 
-	ci "gx/ipfs/QmNiJiXwWE3kRhZrC5ej3kSjWHm337pYfhjLGSCDNKJP2s/go-libp2p-crypto"
-	"gx/ipfs/QmP2g3VxmC7g7fyRJDj1VJ72KHZbJ9UW24YjSWEj1XTb4H/go-ipfs-exchange-interface"
-	"gx/ipfs/QmPJxxDsX2UbchSHobbYuvz7qnyJTFKvaKMzE2rZWJ4x5B/go-libp2p-peer"
-	pstore "gx/ipfs/QmQFFp4ntkd4C14sP3FaH9WJyBuetuGUVo6dShNHvnoEvC/go-libp2p-peerstore"
-	offlineroute "gx/ipfs/QmRJvdmKJoDcQEhhTt5NYXJPQFnJYPo1kfapxtjZLfDDqH/go-ipfs-routing/offline"
-	ipld "gx/ipfs/QmRL22E4paat7ky7vx9MLpR97JHHbFPrg3ytFQw6qp1y1s/go-ipld-format"
-	"gx/ipfs/QmRjT8Bkut84fHf9nxMQBxGsqLAkqzMdFaemDK7e61dBNZ/go-libp2p-routing"
-	"gx/ipfs/QmS2aqUZLJp8kF1ihE5rvDGE5LvmKDPnx32w9Z1BW9xLV5/go-ipfs-blockstore"
-	dag "gx/ipfs/QmUtsx89yiCY6F8mbpP6ecXckiSzCBH7EvkKZuZEHBcr1m/go-merkledag"
-	coreiface "gx/ipfs/QmVSbopkxvLSRFuUn1SeHoEcArhCLn2okUbVpLvhQ1pm1X/interface-go-ipfs-core"
-	"gx/ipfs/QmVSbopkxvLSRFuUn1SeHoEcArhCLn2okUbVpLvhQ1pm1X/interface-go-ipfs-core/options"
-	pubsub "gx/ipfs/QmWL6MKfes1HuSiRUNzGmwy9YyQDwcZF9V1NaA2keYKhtE/go-libp2p-pubsub"
-	offlinexch "gx/ipfs/QmYZwey1thDTynSrvd6qQkX24UpTka6TFhQ2v569UpoqxD/go-ipfs-exchange-offline"
-	bserv "gx/ipfs/QmbgbNxC1PMyS2gbx7nf2jKNG7bZAfYJJebdK4ptBBWCz1/go-blockservice"
-	logging "gx/ipfs/QmcuXC5cxs79ro2cUuHs4HQ2bkDLJUYokwL8aivcX6HW3C/go-log"
-	record "gx/ipfs/QmexPd3srWxHC76gW2p5j5tQvwpPuCoW7b9vFhJ8BRPyh9/go-libp2p-record"
-	p2phost "gx/ipfs/QmfRHxh8bt4jWLKRhNvR5fn7mFACrQBFLqV4wyoymEExKV/go-libp2p-host"
+	"github.com/ipfs/go-ipfs/core"
+	"github.com/ipfs/go-ipfs/core/node"
+	"github.com/ipfs/go-ipfs/namesys"
+	"github.com/ipfs/go-ipfs/repo"
 )
 
 var log = logging.Logger("core/coreapi")
@@ -64,7 +66,9 @@ type CoreAPI struct {
 	exchange        exchange.Interface
 
 	namesys namesys.NameSystem
-	routing routing.IpfsRouting
+	routing routing.Routing
+
+	provider provider.System
 
 	pubSub *pubsub.PubSub
 
@@ -174,6 +178,8 @@ func (api *CoreAPI) WithOptions(opts ...options.ApiOption) (coreiface.CoreAPI, e
 		exchange:        n.Exchange,
 		routing:         n.Routing,
 
+		provider: n.Provider,
+
 		pubSub: n.PubSub,
 
 		nd:         n,
@@ -181,7 +187,7 @@ func (api *CoreAPI) WithOptions(opts ...options.ApiOption) (coreiface.CoreAPI, e
 	}
 
 	subApi.checkOnline = func(allowOffline bool) error {
-		if !n.OnlineMode() && !allowOffline {
+		if !n.IsOnline && !allowOffline {
 			return coreiface.ErrOffline
 		}
 		return nil
@@ -202,7 +208,7 @@ func (api *CoreAPI) WithOptions(opts ...options.ApiOption) (coreiface.CoreAPI, e
 
 		cs := cfg.Ipns.ResolveCacheSize
 		if cs == 0 {
-			cs = core.DefaultIpnsCacheSize
+			cs = node.DefaultIpnsCacheSize
 		}
 		if cs < 0 {
 			return nil, fmt.Errorf("cannot specify negative resolve cache size")
@@ -210,6 +216,7 @@ func (api *CoreAPI) WithOptions(opts ...options.ApiOption) (coreiface.CoreAPI, e
 
 		subApi.routing = offlineroute.NewOfflineRouter(subApi.repo.Datastore(), subApi.recordValidator)
 		subApi.namesys = namesys.NewNameSystem(subApi.routing, subApi.repo.Datastore(), cs)
+		subApi.provider = provider.NewOfflineProvider()
 
 		subApi.peerstore = nil
 		subApi.peerHost = nil

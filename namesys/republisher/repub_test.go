@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"github.com/ipfs/go-ipfs/core"
+	"github.com/ipfs/go-ipfs/core/bootstrap"
 	mock "github.com/ipfs/go-ipfs/core/mock"
 	namesys "github.com/ipfs/go-ipfs/namesys"
 	. "github.com/ipfs/go-ipfs/namesys/republisher"
-	path "gx/ipfs/QmQ3YSqfxunT5QBg6KBVskKyRE26q6hjSMyhpxchpm7jEN/go-path"
+	path "github.com/ipfs/go-path"
 
-	pstore "gx/ipfs/QmQFFp4ntkd4C14sP3FaH9WJyBuetuGUVo6dShNHvnoEvC/go-libp2p-peerstore"
-	goprocess "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
-	mocknet "gx/ipfs/QmSgtf5vHyugoxcwMbyNy6bZ9qPDDTJSYEED2GkWjLwitZ/go-libp2p/p2p/net/mock"
+	goprocess "github.com/jbenet/goprocess"
+	peer "github.com/libp2p/go-libp2p-core/peer"
+	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 )
 
 func TestRepublish(t *testing.T) {
@@ -28,10 +29,7 @@ func TestRepublish(t *testing.T) {
 
 	var nodes []*core.IpfsNode
 	for i := 0; i < 10; i++ {
-		nd, err := core.NewNode(ctx, &core.BuildCfg{
-			Online: true,
-			Host:   mock.MockHostOption(mn),
-		})
+		nd, err := mock.MockPublicNode(ctx, mn)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,10 +39,12 @@ func TestRepublish(t *testing.T) {
 		nodes = append(nodes, nd)
 	}
 
-	mn.LinkAll()
+	if err := mn.LinkAll(); err != nil {
+		t.Fatal(err)
+	}
 
-	bsinf := core.BootstrapConfigWithPeers(
-		[]pstore.PeerInfo{
+	bsinf := bootstrap.BootstrapConfigWithPeers(
+		[]peer.AddrInfo{
 			nodes[0].Peerstore.PeerInfo(nodes[0].Identity),
 		},
 	)
@@ -92,7 +92,7 @@ func TestRepublish(t *testing.T) {
 
 	// The republishers that are contained within the nodes have their timeout set
 	// to 12 hours. Instead of trying to tweak those, we're just going to pretend
-	// they dont exist and make our own.
+	// they don't exist and make our own.
 	repub := NewRepublisher(rp, publisher.Repo.Datastore(), publisher.PrivateKey, publisher.Repo.Keystore())
 	repub.Interval = time.Second
 	repub.RecordLifetime = time.Second * 5
