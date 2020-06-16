@@ -117,8 +117,6 @@ documented in `ipfs config profile --help`.
     - [`Discovery.MDNS`](#discoverymdns)
         - [`Discovery.MDNS.Enabled`](#discoverymdnsenabled)
         - [`Discovery.MDNS.Interval`](#discoverymdnsinterval)
-- [`Routing`](#routing)
-    - [`Routing.Type`](#routingtype)
 - [`Gateway`](#gateway)
     - [`Gateway.NoFetch`](#gatewaynofetch)
     - [`Gateway.NoDNSLink`](#gatewaynodnslink)
@@ -138,9 +136,16 @@ documented in `ipfs config profile --help`.
     - [`Mounts.IPFS`](#mountsipfs)
     - [`Mounts.IPNS`](#mountsipns)
     - [`Mounts.FuseAllowOther`](#mountsfuseallowother)
+- [`Pubsub`](#pubsub)
+    - [`Pubsub.Router`](#pubsubrouter)
+    - [`Pubsub.DisableSigning`](#pubsubdisablesigning)
+    - [`Peering`](#peering)
+        - [`Peering.Peers`](#peeringpeers)
 - [`Reprovider`](#reprovider)
     - [`Reprovider.Interval`](#reproviderinterval)
     - [`Reprovider.Strategy`](#reproviderstrategy)
+- [`Routing`](#routing)
+    - [`Routing.Type`](#routingtype)
 - [`Swarm`](#swarm)
     - [`Swarm.AddrFilters`](#swarmaddrfilters)
     - [`Swarm.DisableBandwidthMetrics`](#swarmdisablebandwidthmetrics)
@@ -153,6 +158,7 @@ documented in `ipfs config profile --help`.
         - [`Swarm.ConnMgr.LowWater`](#swarmconnmgrlowwater)
         - [`Swarm.ConnMgr.HighWater`](#swarmconnmgrhighwater)
         - [`Swarm.ConnMgr.GracePeriod`](#swarmconnmgrgraceperiod)
+
 
 ## `Addresses`
 
@@ -197,7 +203,9 @@ Default:
 ```json
 [
   "/ip4/0.0.0.0/tcp/4001",
-  "/ip6/::/tcp/4001"
+  "/ip6/::/tcp/4001",
+  "/ip6/0.0.0.0/udp/4001/quic",
+  "/ip6/::/udp/4001/quic"
 ]
 ```
 
@@ -391,48 +399,6 @@ Default: `true`
 
 A number of seconds to wait between discovery checks.
 
-## `Routing`
-
-Contains options for content, peer, and IPNS routing mechanisms.
-
-### `Routing.Type`
-
-Content routing mode. Can be overridden with daemon `--routing` flag.
-
-There are two core routing options: "none" and "dht" (default).
-
-* If set to "none", your node will use _no_ routing system. You'll have to
-  explicitly connect to peers that have the content you're looking for.
-* If set to "dht" (or "dhtclient"/"dhtserver"), your node will use the IPFS DHT.
-
-When the DHT is enabled, it can operate in two modes: client and server.
-
-* In server mode, your node will query other peers for DHT records, and will
-  respond to requests from other peers (both requests to store records and
-  requests to retrieve records).
-* In client mode, your node will query the DHT as a client but will not respond
-  to requests from other peers. This mode is less resource intensive than server
-  mode.
-
-When `Routing.Type` is set to `dht`, your node will start as a DHT client, and
-switch to a DHT server when and if it determines that it's reachable from the
-public internet (e.g., it's not behind a firewall).
-
-To force a specific DHT mode, client or server, set `Routing.Type` to
-`dhtclient` or `dhtserver` respectively. Please do not set this to `dhtserver`
-unless you're sure your node is reachable from the public network.
-  
-**Example:**
-
-```json
-{
-  "Routing": {
-    "Type": "dhtclient"
-  }
-}
-```  
-  
-
 ## `Gateway`
 
 Options for the HTTP gateway.
@@ -498,6 +464,7 @@ Example: We mount `blog.ipfs.io` (a dnslink page) at `ipfs.io/blog`.
 ```json
 "Gateway": {
   "PathPrefixes": ["/blog"],
+}
 ```
 
 **nginx_ipfs.conf**
@@ -528,6 +495,10 @@ Example:
     "PublicGateways": {
       "example.com": {
         "Paths": ["/ipfs", "/ipns"],
+      }
+    }
+  }
+}
 ```
 
 Above enables `http://example.com/ipfs/*` and `http://example.com/ipns/*` but not `http://example.com/api/*`
@@ -539,29 +510,33 @@ Default: `[]`
 A boolean to configure whether the gateway at the hostname provides [Origin isolation](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy)
 between content roots.
 
-- `true` - enables [subdomain gateway](#https://docs-beta.ipfs.io/how-to/address-ipfs-on-web/#subdomain-gateway) at `http://*.{hostname}/`
+- `true` - enables [subdomain gateway](#https://docs.ipfs.io/how-to/address-ipfs-on-web/#subdomain-gateway) at `http://*.{hostname}/`
     - **Requires whitelist:** make sure respective `Paths` are set.
     For example, `Paths: ["/ipfs", "/ipns"]` are required for `http://{cid}.ipfs.{hostname}` and `http://{foo}.ipns.{hostname}` to work:
         ```json
-        {
         "Gateway": {
             "PublicGateways": {
-            "dweb.link": {
-                "UseSubdomains": true,
-                "Paths": ["/ipfs", "/ipns"],
+                "dweb.link": {
+                    "UseSubdomains": true,
+                    "Paths": ["/ipfs", "/ipns"],
+                }
+            }
+        }
         ```
     - **Backward-compatible:** requests for content paths such as `http://{hostname}/ipfs/{cid}` produce redirect to `http://{cid}.ipfs.{hostname}`
     - **API:** if `/api` is on the `Paths` whitelist, `http://{hostname}/api/{cmd}` produces redirect to `http://api.{hostname}/api/{cmd}`
 
-- `false` - enables [path gateway](https://docs-beta.ipfs.io/how-to/address-ipfs-on-web/#path-gateway) at `http://{hostname}/*`
+- `false` - enables [path gateway](https://docs.ipfs.io/how-to/address-ipfs-on-web/#path-gateway) at `http://{hostname}/*`
   - Example:
     ```json
-    {
     "Gateway": {
         "PublicGateways": {
-        "ipfs.io": {
-            "UseSubdomains": false,
-            "Paths": ["/ipfs", "/ipns", "/api"],
+            "ipfs.io": {
+                "UseSubdomains": false,
+                "Paths": ["/ipfs", "/ipns", "/api"],
+            }
+        }
+    }
     ```
 <!-- **(not implemented yet)** due to the lack of Origin isolation, cookies and storage on `Paths` will be disabled by [Clear-Site-Data](https://github.com/ipfs/in-web-browsers/issues/157) header -->
 
@@ -605,7 +580,7 @@ $ ipfs config --json Gateway.PublicGateways '{"localhost": null }'
 
 Below is a list of the most common public gateway setups.
 
-* Public [subdomain gateway](https://docs-beta.ipfs.io/how-to/address-ipfs-on-web/#subdomain-gateway) at `http://{cid}.ipfs.dweb.link` (each content root gets its own Origin)
+* Public [subdomain gateway](https://docs.ipfs.io/how-to/address-ipfs-on-web/#subdomain-gateway) at `http://{cid}.ipfs.dweb.link` (each content root gets its own Origin)
    ```console
    $ ipfs config --json Gateway.PublicGateways '{
        "dweb.link": {
@@ -614,10 +589,12 @@ Below is a list of the most common public gateway setups.
        }
      }'
    ```
-   **Note:** this enables automatic redirects from content paths to subdomains  
-   `http://dweb.link/ipfs/{cid}` → `http://{cid}.ipfs.dweb.link`
+   **Note I:** this enables automatic redirects from content paths to subdomains:  
+   `http://dweb.link/ipfs/{cid}` → `http://{cid}.ipfs.dweb.link`  
+   **Note II:** if you run go-ipfs behind a reverse proxy that provides TLS, make it adds a `X-Forwarded-Proto: https` HTTP header to ensure users are redirected to `https://`, not `http://`. The NGINX directive is `proxy_set_header X-Forwarded-Proto "https";`.:    
+   `https://dweb.link/ipfs/{cid}` → `https://{cid}.ipfs.dweb.link`
 
-* Public [path gateway](https://docs-beta.ipfs.io/how-to/address-ipfs-on-web/#path-gateway) at `http://ipfs.io/ipfs/{cid}` (no Origin separation)
+* Public [path gateway](https://docs.ipfs.io/how-to/address-ipfs-on-web/#path-gateway) at `http://ipfs.io/ipfs/{cid}` (no Origin separation)
    ```console
    $ ipfs config --json Gateway.PublicGateways '{
        "ipfs.io": {
@@ -633,7 +610,7 @@ Below is a list of the most common public gateway setups.
   ```
   * Note that `NoDNSLink: false` is the default (it works out of the box unless set to `true` manually)
 
-* Hardened, site-specific [DNSLink gateway](https://docs-beta.ipfs.io/how-to/address-ipfs-on-web/#dnslink-gateway).  
+* Hardened, site-specific [DNSLink gateway](https://docs.ipfs.io/how-to/address-ipfs-on-web/#dnslink-gateway).  
   Disable fetching of remote data (`NoFetch: true`)
   and resolving DNSLink at unknown hostnames (`NoDNSLink: true`).
   Then, enable DNSLink gateway only for the specific hostname (for which data
@@ -700,6 +677,98 @@ Mountpoint for `/ipns/`.
 
 Sets the FUSE allow other option on the mountpoint.
 
+## `Pubsub`
+
+Pubsub configures the `ipfs pubsub` subsystem. To use, it must be enabled by
+passing the `--enable-pubsub-experiment` flag to the daemon.
+
+### `Pubsub.Router`
+
+Sets the default router used by pubsub to route messages to peers. This can be one of:
+
+* `"floodsub"` - floodsub is a basic router that simply _floods_ messages to all
+  connected peers. This router is extremely inefficient but _very_ reliable.
+* `"gossipsub"` - [gossipsub][] is a more advanced routing algorithm that will
+  build an overlay mesh from a subset of the links in the network.
+  
+Default: `"gossipsub"`
+
+[gossipsub]: https://github.com/libp2p/specs/tree/master/pubsub/gossipsub
+
+### `Pubsub.DisableSigning`
+
+Disables message signing and signature verification. Enable this option if
+you're operating in a completely trusted network.
+
+It is _not_ safe to disable signing even if you don't care _who_ sent the
+message because spoofed messages can be used to silence real messages by
+intentionally re-using the real message's message ID.
+
+Default: `false`
+
+### `Peering`
+
+Configures the peering subsystem. The peering subsystem configures go-ipfs to
+connect to, remain connected to, and reconnect to a set of nodes. Nodes should
+use this subsystem to create "sticky" links between frequently useful peers to
+improve reliability.
+
+Use-cases:
+
+* An IPFS gateway connected to an IPFS cluster should peer to ensure that the
+  gateway can always fetch content from the cluster.
+* A dapp may peer embedded go-ipfs nodes with a set of pinning services or
+  textile cafes/hubs.
+* A set of friends may peer to ensure that they can always fetch each other's
+  content.
+
+When a node is added to the set of peered nodes, go-ipfs will:
+
+1. Protect connections to this node from the connection manager. That is,
+   go-ipfs will never automatically close the connection to this node and
+   connections to this node will not count towards the connection limit.
+2. Connect to this node on startup.
+3. Repeatedly try to reconnect to this node if the last connection dies or the
+   node goes offline. This repeated re-connect logic is governed by a randomized
+   exponential backoff delay ranging from ~5 seconds to ~10 minutes to avoid
+   repeatedly reconnect to a node that's offline.
+
+Peering can be asymmetric or symmetric:
+
+* When symmetric, the connection will be protected by both nodes and will likely
+  be vary stable.
+* When asymmetric, only one node (the node that configured peering) will protect
+  the connection and attempt to re-connect to the peered node on disconnect. If
+  the peered node is under heavy load and/or has a low connection limit, the
+  connection may flap repeatedly. Be careful when asymmetrically peering to not
+  overload peers.
+
+#### `Peering.Peers`
+
+The set of peers with which to peer.
+
+```json
+{
+  "Peering": {
+    "Peers": [
+      {
+        "ID": "QmPeerID1",
+        "Addrs": ["/ip4/18.1.1.1/tcp/4001"]
+      },
+      {
+        "ID": "QmPeerID2",
+        "Addrs": ["/ip4/18.1.1.2/tcp/4001", "/ip4/18.1.1.2/udp/4001/quic"]
+      }
+    ]
+  }
+  ...
+}
+```
+
+Where `ID` is the peer ID and `Addrs` is a set of known addresses for the peer. If no addresses are specified, the DHT will be queried.
+
+Additional fields may be added in the future.
+
 ## `Reprovider`
 
 ### `Reprovider.Interval`
@@ -719,6 +788,48 @@ Tells reprovider what should be announced. Valid strategies are:
   - "all" (default) - announce all stored data
   - "pinned" - only announce pinned data
   - "roots" - only announce directly pinned keys and root keys of recursive pins
+
+## `Routing`
+
+Contains options for content, peer, and IPNS routing mechanisms.
+
+### `Routing.Type`
+
+Content routing mode. Can be overridden with daemon `--routing` flag.
+
+There are two core routing options: "none" and "dht" (default).
+
+* If set to "none", your node will use _no_ routing system. You'll have to
+  explicitly connect to peers that have the content you're looking for.
+* If set to "dht" (or "dhtclient"/"dhtserver"), your node will use the IPFS DHT.
+
+When the DHT is enabled, it can operate in two modes: client and server.
+
+* In server mode, your node will query other peers for DHT records, and will
+  respond to requests from other peers (both requests to store records and
+  requests to retrieve records).
+* In client mode, your node will query the DHT as a client but will not respond
+  to requests from other peers. This mode is less resource intensive than server
+  mode.
+
+When `Routing.Type` is set to `dht`, your node will start as a DHT client, and
+switch to a DHT server when and if it determines that it's reachable from the
+public internet (e.g., it's not behind a firewall).
+
+To force a specific DHT mode, client or server, set `Routing.Type` to
+`dhtclient` or `dhtserver` respectively. Please do not set this to `dhtserver`
+unless you're sure your node is reachable from the public network.
+  
+**Example:**
+
+```json
+{
+  "Routing": {
+    "Type": "dhtclient"
+  }
+}
+```  
+  
 
 ## `Swarm`
 
