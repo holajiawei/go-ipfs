@@ -61,6 +61,7 @@ func init() {
 		"mem":     MemDatastoreConfig,
 		"log":     LogDatastoreConfig,
 		"measure": MeasureDatastoreConfig,
+		"cahce":   CacheDatastoreConfig,
 	}
 }
 
@@ -245,4 +246,31 @@ func (c measureDatastoreConfig) Create(path string) (repo.Datastore, error) {
 		return nil, err
 	}
 	return measure.New(c.prefix, child), nil
+}
+
+type tieredDataStoreConfig struct {
+	quota int64
+	highWatermark float32
+	lowWatermark  float32
+	datastore DatastoreConfig
+}
+
+type cacheDatastoreConfig struct {
+	source  DatastoreConfig // original datastore
+	evictor string
+	stepFactor float32
+	attenuationFactor float32
+	tiers []tieredDataStoreConfig
+}
+
+func CacheDatastoreConfig(params map[string]interface{}) (DatastoreConfig, error) {
+	return nil, nil
+}
+
+func (c *cacheDatastoreConfig) DiskSpec() DiskSpec {
+	return nil
+}
+
+func (c cacheDatastoreConfig) Create(path string) (repo.Datastore, error) {
+	return nil, nil
 }
