@@ -6,11 +6,11 @@ test_description="Test non-standard datastores"
 
 test_expect_success "'ipfs init --profile=badgerds' succeeds" '
   BITS="2048" &&
-  ipfs init --bits="$BITS" --profile=badgerds
+  ipfs init --profile=badgerds
 '
 
 test_expect_success "'ipfs pin ls' works" '
-  ipfs pin ls | wc -l | grep 9
+  ipfs pin ls -r | wc -l | grep 8
 '
 
 test_done

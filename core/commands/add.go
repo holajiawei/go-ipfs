@@ -38,6 +38,7 @@ const (
 	onlyHashOptionName    = "only-hash"
 	chunkerOptionName     = "chunker"
 	pinOptionName         = "pin"
+	pinPathOptionName     = "pinpath"
 	rawLeavesOptionName   = "raw-leaves"
 	noCopyOptionName      = "nocopy"
 	fstoreCacheOptionName = "fscache"
@@ -59,6 +60,10 @@ Adds contents of <path> to ipfs. Use -r to add directories (recursively).
 Adds contents of <path> to ipfs. Use -r to add directories.
 Note that directories are added recursively, to form the ipfs
 MerkleDAG.
+
+If the daemon is not running, it will just add locally.
+If the daemon is started later, it will be advertised after a few
+seconds when the reprovider runs.
 
 The wrap option, '-w', wraps the file (or files, if using the
 recursive option) in a directory. This directory contains only
@@ -129,6 +134,7 @@ only-hash, and progress/status related flags) will change the final hash.
 		cmds.BoolOption(wrapOptionName, "w", "Wrap files with a directory object."),
 		cmds.StringOption(chunkerOptionName, "s", "Chunking algorithm, size-[bytes], rabin-[min]-[avg]-[max] or buzhash").WithDefault("size-262144"),
 		cmds.BoolOption(pinOptionName, "Pin this object when adding.").WithDefault(true),
+		cmds.StringOption(pinPathOptionName, "P", "Pin object under this path.").WithDefault("added/"),
 		cmds.BoolOption(rawLeavesOptionName, "Use raw blocks for leaf nodes. (experimental)"),
 		cmds.BoolOption(noCopyOptionName, "Add the file using filestore. Implies raw-leaves. (experimental)"),
 		cmds.BoolOption(fstoreCacheOptionName, "Check the filestore for pre-existing blocks. (experimental)"),
@@ -169,6 +175,7 @@ only-hash, and progress/status related flags) will change the final hash.
 		silent, _ := req.Options[silentOptionName].(bool)
 		chunker, _ := req.Options[chunkerOptionName].(string)
 		dopin, _ := req.Options[pinOptionName].(bool)
+		pinPath, _ := req.Options[pinPathOptionName].(string)
 		rawblks, rbset := req.Options[rawLeavesOptionName].(bool)
 		nocopy, _ := req.Options[noCopyOptionName].(bool)
 		fscache, _ := req.Options[fstoreCacheOptionName].(bool)
@@ -203,6 +210,7 @@ only-hash, and progress/status related flags) will change the final hash.
 			options.Unixfs.Chunker(chunker),
 
 			options.Unixfs.Pin(dopin),
+			options.Unixfs.PinPath(pinPath),
 			options.Unixfs.HashOnly(hash),
 			options.Unixfs.FsCache(fscache),
 			options.Unixfs.Nocopy(nocopy),
